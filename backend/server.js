@@ -14,7 +14,7 @@ const app = express();
 //  MIDDLEWARE
 // ─────────────────────────────────────────────
 app.use(cors({
-  origin: "https://expense-tracker-6vjs.onrender.com",
+  origin: "https://expense-tracker-frontend-xwhp.onrender.com",
   credentials: true // Important if you add cookies later
 }));
 
