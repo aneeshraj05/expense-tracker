@@ -13,13 +13,16 @@ const app = express();
 // ─────────────────────────────────────────────
 //  MIDDLEWARE
 // ─────────────────────────────────────────────
-app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
+app.use(cors({
+  origin: ["http://localhost:3000", "http://localhost:3001"],
+  credentials: true
+}));
 app.use(express.json());
 
-// Rate limiting — 100 requests per 15 minutes
+// Rate limiting — 1000 requests per 15 minutes (increased for development)
 app.use('/api/', rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 1000,
   message: { success: false, message: 'Too many requests. Please try again later.' }
 }));
 
