@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:5000/api',
+  baseURL: 'https://expense-tracker-backend-2s6m.onrender.com/api',
   headers: {
     'Content-Type': 'application/json'
   }
@@ -30,10 +30,10 @@ api.interceptors.response.use(
     if (error.response && error.response.status === 401) {
       // Don't auto-redirect if the 401 comes from the login endpoint itself
       if (error.config.url !== '/auth/login') {
-         // Token expired or invalid
-         localStorage.removeItem('token');
-         localStorage.removeItem('user');
-         window.location.href = '/login';
+        // Token expired or invalid
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
       }
     }
     return Promise.reject(error);
