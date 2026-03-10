@@ -14,9 +14,10 @@ const app = express();
 //  MIDDLEWARE
 // ─────────────────────────────────────────────
 app.use(cors({
-  origin: ["http://localhost:3000", "http://localhost:3001"],
-  credentials: true
+  origin: "https://expense-tracker-6vjs.onrender.com",
+  credentials: true // Important if you add cookies later
 }));
+
 app.use(express.json());
 
 // Rate limiting — 1000 requests per 15 minutes (increased for development)
