@@ -23,7 +23,6 @@ exports.register = async (req, res) => {
       return res.status(409).json({ success: false, message: 'Email already registered' });
     }
 
-    // Create user
     const user = await UserModel.create({ name, email, password });
     const token = generateToken(user.id);
 
