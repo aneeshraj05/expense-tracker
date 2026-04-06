@@ -16,7 +16,7 @@ const app = express();
 app.use(cors({
   origin: [
     "http://localhost:3000",
-    "https://expense-tracker-frontend-xwhp.onrender.com"
+    "https://expense-tracker-zn8u.onrender.com"
   ],
   credentials: true
 }));
