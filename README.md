@@ -8,7 +8,7 @@ A full-stack Expense Tracker web application that helps users manage their daily
 
 ## Screenshots
 
-> Add your application images here
+
 
 ### Dashboard
 
