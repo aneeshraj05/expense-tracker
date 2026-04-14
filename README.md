@@ -2,6 +2,32 @@
 
 A full-stack Expense Tracker web application that helps users manage their daily expenses, track spending patterns, and set monthly budgets efficiently.
 
+
+
+---
+
+## Screenshots
+
+> Add your application images here
+
+### Dashboard
+
+<img width="1919" height="1028" alt="image" src="https://github.com/user-attachments/assets/8ca2261f-8b86-4c8e-95f0-696fd927bd24" />
+
+
+### Add Expense
+
+<img width="1919" height="1032" alt="image" src="https://github.com/user-attachments/assets/7a7e36f7-6531-47d8-bdc1-2e6758ded843" />
+
+
+### Analytics
+
+<img width="1917" height="1028" alt="image" src="https://github.com/user-attachments/assets/ac0de03e-d678-46f7-9ce0-50527f4fe5ce" />
+
+
+---
+
+
 ---
 
 ## Features
@@ -78,28 +104,7 @@ expense-tracker/
 └── README.md
 ```
 
----
 
-## Screenshots
-
-> Add your application images here
-
-### Dashboard
-
-<img width="1919" height="1028" alt="image" src="https://github.com/user-attachments/assets/8ca2261f-8b86-4c8e-95f0-696fd927bd24" />
-
-
-### Add Expense
-
-<img width="1919" height="1032" alt="image" src="https://github.com/user-attachments/assets/7a7e36f7-6531-47d8-bdc1-2e6758ded843" />
-
-
-### Analytics
-
-<img width="1917" height="1028" alt="image" src="https://github.com/user-attachments/assets/ac0de03e-d678-46f7-9ce0-50527f4fe5ce" />
-
-
----
 
 ## Environment Variables
 
