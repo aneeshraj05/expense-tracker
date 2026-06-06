@@ -77,20 +77,22 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     // Check if email already exists
-    const [existingUsers] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
+    const { rows: existingUsers } = await db.query('SELECT id FROM users WHERE email = $1', [email]);
     if (existingUsers.length > 0) {
       return res.status(409).json({ success: false, message: 'Email already registered.' });
     }
 
     // Hash the password and insert new user
     const hashedPassword = bcrypt.hashSync(password, 12);
-    const [result] = await db.query(
-      'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
+    const { rows: insertResult } = await db.query(
+      'INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id',
       [name, email, hashedPassword]
     );
 
+    const insertId = insertResult[0].id;
+
     const token = jwt.sign(
-      { id: result.insertId },
+      { id: insertId },
       process.env.JWT_SECRET || 'expense_tracker_secret',
       { expiresIn: '7d' }
     );
@@ -99,7 +101,7 @@ app.post('/api/auth/register', async (req, res) => {
       success: true,
       message: 'Account created successfully.',
       token,
-      user: { id: result.insertId, name, email }
+      user: { id: insertId, name, email }
     });
   } catch (err) {
     console.error(err);
@@ -116,7 +118,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email and password are required.' });
     }
 
-    const [results] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+    const { rows: results } = await db.query('SELECT * FROM users WHERE email = $1', [email]);
     if (results.length === 0) {
       return res.status(401).json({ success: false, message: 'Invalid email or password.' });
     }
@@ -148,7 +150,7 @@ app.post('/api/auth/login', async (req, res) => {
 // GET /api/auth/profile — Get logged-in user info (protected)
 app.get('/api/auth/profile', verifyToken, async (req, res) => {
   try {
-    const [results] = await db.query('SELECT id, name, email FROM users WHERE id = ?', [req.userId]);
+    const { rows: results } = await db.query('SELECT id, name, email FROM users WHERE id = $1', [req.userId]);
     if (results.length === 0) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
@@ -169,42 +171,43 @@ app.get('/api/expenses/stats', verifyToken, async (req, res) => {
     const { month } = req.query;
     let monthFilter = '';
     let monthParams = [];
+    let paramOffset = 1;
 
     if (month) {
       const [year, m] = month.split('-');
-      monthFilter = ' AND MONTH(expense_date) = ? AND YEAR(expense_date) = ?';
+      monthFilter = ` AND EXTRACT(MONTH FROM expense_date) = $2 AND EXTRACT(YEAR FROM expense_date) = $3`;
       monthParams = [parseInt(m), parseInt(year)];
     }
 
     // 1. Total spent for the selected month
-    const [totalResult] = await db.query(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE user_id = ? ${monthFilter}`,
+    const { rows: totalResult } = await db.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE user_id = $1 ${monthFilter}`,
       [req.userId, ...monthParams]
     );
 
     // 2. Category-wise spending breakdown
-    const [categoryResult] = await db.query(
+    const { rows: categoryResult } = await db.query(
       `SELECT category, SUM(amount) as total, COUNT(*) as count
-       FROM expenses WHERE user_id = ? ${monthFilter}
+       FROM expenses WHERE user_id = $1 ${monthFilter}
        GROUP BY category ORDER BY total DESC`,
       [req.userId, ...monthParams]
     );
 
     // 3. Month-by-month trend (last 6 months)
-    const [trendResult] = await db.query(
-      `SELECT DATE_FORMAT(expense_date, '%Y-%m') as month,
+    const { rows: trendResult } = await db.query(
+      `SELECT TO_CHAR(expense_date, 'YYYY-MM') as month,
               SUM(amount) as total, COUNT(*) as count
        FROM expenses
-       WHERE user_id = ? AND expense_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
-       GROUP BY DATE_FORMAT(expense_date, '%Y-%m')
+       WHERE user_id = $1 AND expense_date >= CURRENT_DATE - INTERVAL '6 months'
+       GROUP BY TO_CHAR(expense_date, 'YYYY-MM')
        ORDER BY month ASC`,
       [req.userId]
     );
 
     // 4. Most recent 5 transactions
-    const [recentResult] = await db.query(
+    const { rows: recentResult } = await db.query(
       `SELECT * FROM expenses
-       WHERE user_id = ?
+       WHERE user_id = $1
        ORDER BY expense_date DESC, created DESC
        LIMIT 5`,
       [req.userId]
@@ -229,32 +232,39 @@ app.get('/api/expenses', verifyToken, async (req, res) => {
     const { category, month, search, page = 1, limit = 10 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    let query = 'SELECT * FROM expenses WHERE user_id = ?';
+    let query = 'SELECT * FROM expenses WHERE user_id = $1';
+    let countQuery = 'SELECT COUNT(*) as total FROM expenses WHERE user_id = $1';
     let params = [req.userId];
+    let pIdx = 2;
 
     if (category) {
-      query += ' AND category = ?';
+      query += ` AND category = $${pIdx}`;
+      countQuery += ` AND category = $${pIdx}`;
       params.push(category);
+      pIdx++;
     }
     if (month) {
       const [year, m] = month.split('-');
-      query += ' AND MONTH(expense_date) = ? AND YEAR(expense_date) = ?';
+      query += ` AND EXTRACT(MONTH FROM expense_date) = $${pIdx} AND EXTRACT(YEAR FROM expense_date) = $${pIdx+1}`;
+      countQuery += ` AND EXTRACT(MONTH FROM expense_date) = $${pIdx} AND EXTRACT(YEAR FROM expense_date) = $${pIdx+1}`;
       params.push(parseInt(m), parseInt(year));
+      pIdx += 2;
     }
     if (search) {
-      query += ' AND (title LIKE ? OR category LIKE ?)';
-      params.push(`%${search}%`, `%${search}%`);
+      query += ` AND (title ILIKE $${pIdx} OR category ILIKE $${pIdx})`;
+      countQuery += ` AND (title ILIKE $${pIdx} OR category ILIKE $${pIdx})`;
+      params.push(`%${search}%`);
+      pIdx++;
     }
 
     // Get total count for pagination first
-    const countQuery = query.replace('SELECT *', 'SELECT COUNT(*) as total');
-    const [countResult] = await db.query(countQuery, params);
+    const { rows: countResult } = await db.query(countQuery, params);
     const total = countResult[0].total;
 
-    query += ' ORDER BY expense_date DESC, created DESC LIMIT ? OFFSET ?';
+    query += ` ORDER BY expense_date DESC, created DESC LIMIT $${pIdx} OFFSET $${pIdx+1}`;
     params.push(parseInt(limit), offset);
 
-    const [results] = await db.query(query, params);
+    const { rows: results } = await db.query(query, params);
 
     res.json({
       success: true,
@@ -281,13 +291,11 @@ app.post('/api/expenses', verifyToken, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Amount must be a positive number.' });
     }
 
-    const [result] = await db.query(
-      'INSERT INTO expenses (title, amount, category, expense_date, user_id) VALUES (?, ?, ?, ?, ?)',
+    const { rows } = await db.query(
+      'INSERT INTO expenses (title, amount, category, expense_date, user_id) VALUES ($1, $2, $3, $4, $5) RETURNING *',
       [title, parseFloat(amount), category, expense_date, req.userId]
     );
 
-    const [rows] = await db.query('SELECT * FROM expenses WHERE id = ?', [result.insertId]);
-    
     res.status(201).json({ success: true, message: 'Expense added.', expense: rows[0] });
   } catch (err) {
     console.error(err);
@@ -305,18 +313,16 @@ app.put('/api/expenses/:id', verifyToken, async (req, res) => {
       return res.status(400).json({ success: false, message: 'All fields are required.' });
     }
 
-    const [result] = await db.query(
-      'UPDATE expenses SET title = ?, amount = ?, category = ?, expense_date = ? WHERE id = ? AND user_id = ?',
+    const result = await db.query(
+      'UPDATE expenses SET title = $1, amount = $2, category = $3, expense_date = $4 WHERE id = $5 AND user_id = $6 RETURNING *',
       [title, parseFloat(amount), category, expense_date, id, req.userId]
     );
 
-    if (result.affectedRows === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ success: false, message: 'Expense not found.' });
     }
 
-    const [rows] = await db.query('SELECT * FROM expenses WHERE id = ?', [id]);
-    
-    res.json({ success: true, message: 'Expense updated.', expense: rows[0] });
+    res.json({ success: true, message: 'Expense updated.', expense: result.rows[0] });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Failed to update expense.' });
@@ -328,12 +334,12 @@ app.delete('/api/expenses/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const [result] = await db.query(
-      'DELETE FROM expenses WHERE id = ? AND user_id = ?',
+    const result = await db.query(
+      'DELETE FROM expenses WHERE id = $1 AND user_id = $2',
       [id, req.userId]
     );
 
-    if (result.affectedRows === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ success: false, message: 'Expense not found.' });
     }
     
@@ -356,14 +362,14 @@ app.get('/api/budget', verifyToken, async (req, res) => {
 
     const [year, m] = month.split('-');
 
-    const [budgetResult] = await db.query(
-      'SELECT * FROM budgets WHERE user_id = ? AND month = ?',
+    const { rows: budgetResult } = await db.query(
+      'SELECT * FROM budgets WHERE user_id = $1 AND month = $2',
       [req.userId, month]
     );
 
-    const [spentResult] = await db.query(
+    const { rows: spentResult } = await db.query(
       `SELECT COALESCE(SUM(amount), 0) as spent FROM expenses
-       WHERE user_id = ? AND MONTH(expense_date) = ? AND YEAR(expense_date) = ?`,
+       WHERE user_id = $1 AND EXTRACT(MONTH FROM expense_date) = $2 AND EXTRACT(YEAR FROM expense_date) = $3`,
       [req.userId, parseInt(m), parseInt(year)]
     );
 
@@ -391,15 +397,10 @@ app.post('/api/budget', verifyToken, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Valid month and amount are required.' });
     }
 
-    await db.query(
-      `INSERT INTO budgets (user_id, month, amount) VALUES (?, ?, ?)
-       ON DUPLICATE KEY UPDATE amount = ?`,
+    const { rows } = await db.query(
+      `INSERT INTO budgets (user_id, month, amount) VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, month) DO UPDATE SET amount = $4 RETURNING *`,
       [req.userId, month, parseFloat(amount), parseFloat(amount)]
-    );
-
-    const [rows] = await db.query(
-      'SELECT * FROM budgets WHERE user_id = ? AND month = ?',
-      [req.userId, month]
     );
 
     res.json({ success: true, message: 'Budget updated.', budget: rows[0] });
